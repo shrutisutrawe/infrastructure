@@ -1,3 +1,4 @@
+assimnet 3
 # Infrastructure
 - Create Virtual Private Cloud (VPC)
 - Create subnets in your VPC. create 3 subnets, each in a different availability zone in the same region in the same VPC.
