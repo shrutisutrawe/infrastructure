@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CSYE 6225 Assignment 03 AWS Networking setup. This template deploys a VPC, with 3 public subnets spread across 3 Availability Zones. It deploys an internet gateway, with a default route on the public subnets.
+Parameters:
+  VpcCidrBlock:
+    Description: "VPC CIDR Block"
+    Type: String
+    Default: "10.0.0.0/16"
+  PublicSubnetNames:
+    Description: "Subnets Name Tags"
+    Type: CommaDelimitedList
+    Default: "PublicSubnetA, PublicSubnetB, PublicSubnetC"
+  VpcSubnetCidrBlocks:
+    Description: "Three Subnet CIDR blocks"
+    Type: CommaDelimitedList
+    Default: "10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24"
+  VpcSubnetAvailabilityZones:
+    Description: "Three Subnet Availability Zones"
+    Type: CommaDelimitedList
+    Default: "us-west-2a, us-west-2b, us-west-2c"
+  PublicRouteDestinationCidrBlock:
+    Description: "Public Route CIDR Block"
+    Type: String
+    Default: "0.0.0.0/0"
+  PublicRouteTableName:
+    Description: "Name Tag for Public Route Table"
+    Type: String
+    Default: "PublicRT"
+  InternetGatewayName:
+    Description: "Name Tag for Internet Gateway"
+    Type: String
+    Default: "InternetGateway"
+
+
+Resources:
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: 'default'
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn:
+      - myVPC
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref InternetGatewayName
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref myVPC
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 0, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Select [ 0, !Ref PublicSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 1, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Select [ 1, !Ref PublicSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 2, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Select [ 2, !Ref PublicSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+        - Key: Name
+          Value: !Ref PublicRouteTableName
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetA
+      RouteTableId:
+        Ref: PublicRouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetB
+      RouteTableId:
+        Ref: PublicRouteTable
+  PublicSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnetC
+      RouteTableId:
+        Ref: PublicRouteTable
+Outputs:
+  VpcId:
+    Description: The VPC ID
+    Value: !Ref myVPC
