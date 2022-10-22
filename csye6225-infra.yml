@@ -29,7 +29,15 @@ Parameters:
     Description: "Name Tag for Internet Gateway"
     Type: String
     Default: "InternetGateway"
-
+  EC2Instance:
+    Type: String
+    Default: t2.micro
+    AllowedValues: [ t2.micro ]
+    Description: "EC2Instance AMI"
+  AMI:
+    Type: String
+    Default: "ami-097b307bd50ad50c1"
+    Description: "The AMI to use"
 
 Resources:
   myVPC:
@@ -143,6 +151,65 @@ Resources:
         Ref: PublicSubnetC
       RouteTableId:
         Ref: PublicRouteTable
+  EC2InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "ApplicationSecurityGroup"
+      GroupDescription: "Application Security Group"
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: -1
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: -1
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: -1
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+
+  Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !Ref AMI
+      InstanceType: !Ref EC2Instance
+      SecurityGroupIds:
+        - !Ref EC2InstanceSecurityGroup
+      SubnetId: !Ref PublicSubnetA
+      KeyName: "aws-us-west-2-key"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            DeleteOnTermination: true
+            VolumeSize: 20
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
 Outputs:
   VpcId:
     Description: The VPC ID
