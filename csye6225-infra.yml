@@ -5,39 +5,82 @@ Parameters:
     Description: "VPC CIDR Block"
     Type: String
     Default: "10.0.0.0/16"
+
   PublicSubnetNames:
     Description: "Subnets Name Tags"
     Type: CommaDelimitedList
     Default: "PublicSubnetA, PublicSubnetB, PublicSubnetC"
+
   VpcSubnetCidrBlocks:
     Description: "Three Subnet CIDR blocks"
     Type: CommaDelimitedList
-    Default: "10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24"
+    Default: "10.0.10.0/24, 10.0.11.0/24, 10.0.12.0/24, 10.0.13.0/24, 10.0.14.0/24, 10.0.15.0/24"
+
   VpcSubnetAvailabilityZones:
     Description: "Three Subnet Availability Zones"
     Type: CommaDelimitedList
     Default: "us-west-2a, us-west-2b, us-west-2c"
+
   PublicRouteDestinationCidrBlock:
     Description: "Public Route CIDR Block"
     Type: String
     Default: "0.0.0.0/0"
+
   PublicRouteTableName:
     Description: "Name Tag for Public Route Table"
     Type: String
     Default: "PublicRT"
+
   InternetGatewayName:
     Description: "Name Tag for Internet Gateway"
     Type: String
     Default: "InternetGateway"
+
+  PrivateSubnetNames:
+    Description: "Name Tags for Subnets"
+    Type: CommaDelimitedList
+    Default: "PrivateSubnetA, PrivateSubnetB, PrivateSubnetC"
+
+  PrivateRouteTableName:
+    Description: "Name Tag for Private RT"
+    Type: String
+    Default: "PrivateRT"
+
   EC2Instance:
     Type: String
     Default: t2.micro
     AllowedValues: [ t2.micro ]
     Description: "EC2Instance AMI"
+
   AMI:
     Type: String
-    Default: "ami-097b307bd50ad50c1"
+    Default: "ami-017fecd1353bcc96e"
     Description: "The AMI to use"
+
+  S3BucketName:
+    Type: String
+    Default: "csye6225bucketshrutitobedeleted"
+    Description: "S3Bucket Name"
+
+  DBName:
+    Description: "RDS DB Name"
+    Type: String
+    Default: "csye6225"
+
+  DBUserName:
+    Description: "RDS Master Username"
+    Type: String
+    Default: "csye6225"
+
+  DBPassword:
+    Description: "RDS Master Password"
+    Type: String
+    Default: "csye6225pwd"
+
+  DBSecurityGroupName:
+    Description: "Name Tag for DB Security Group"
+    Type: String
+    Default: "database"
 
 Resources:
   myVPC:
@@ -50,6 +93,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
+
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     DependsOn:
@@ -58,11 +102,13 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref InternetGatewayName
+
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref myVPC
+
   PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -79,6 +125,7 @@ Resources:
           Value: !Select [ 0, !Ref PublicSubnetNames ]
         - Key: VPC Name
           Value: !Ref AWS::StackName
+
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -95,6 +142,7 @@ Resources:
           Value: !Select [ 1, !Ref PublicSubnetNames ]
         - Key: VPC Name
           Value: !Ref AWS::StackName
+
   PublicSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -111,6 +159,7 @@ Resources:
           Value: !Select [ 2, !Ref PublicSubnetNames ]
         - Key: VPC Name
           Value: !Ref AWS::StackName
+
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -121,6 +170,7 @@ Resources:
           Value: !Ref PublicRouteTableName
         - Key: VPC Name
           Value: !Ref AWS::StackName
+
   PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: InternetGatewayAttachment
@@ -130,6 +180,7 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId:
         Ref: InternetGateway
+
   PublicSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -137,6 +188,7 @@ Resources:
         Ref: PublicSubnetA
       RouteTableId:
         Ref: PublicRouteTable
+
   PublicSubnetBRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -144,6 +196,7 @@ Resources:
         Ref: PublicSubnetB
       RouteTableId:
         Ref: PublicRouteTable
+
   PublicSubnetCRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -151,6 +204,98 @@ Resources:
         Ref: PublicSubnetC
       RouteTableId:
         Ref: PublicRouteTable
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 3, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Select [ 0, !Ref PrivateSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 4, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Select [ 1, !Ref PrivateSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: myVPC
+      CidrBlock: !Select [ 5, !Ref VpcSubnetCidrBlocks ]
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs
+          Ref: 'AWS::Region'
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Select [ 2, !Ref PrivateSubnetNames ]
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+        - Key: Name
+          Value: !Ref PrivateRouteTableName
+        - Key: VPC Name
+          Value: !Ref AWS::StackName
+  #
+  #  PrivateRoute:
+  #    Type: AWS::EC2::Route
+  #    Properties:
+  #      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetA
+      RouteTableId:
+        Ref: PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetB
+      RouteTableId:
+        Ref: PrivateRouteTable
+
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivateSubnetC
+      RouteTableId:
+        Ref: PrivateRouteTable
+
   EC2InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -174,26 +319,9 @@ Resources:
           FromPort: 3000
           ToPort: 3000
           CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: 0
-          ToPort: 0
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: -1
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: -1
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: -1
-          FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
 
   Instance:
-    Type: 'AWS::EC2::Instance'
+    Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref AMI
       InstanceType: !Ref EC2Instance
@@ -206,10 +334,167 @@ Resources:
           Ebs:
             VolumeType: gp2
             DeleteOnTermination: true
-            VolumeSize: 20
+            VolumeSize: 50
+      IamInstanceProfile: !Ref S3BucketIAMInstanceProfile
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash
+          DB_HOST=${RDSInstance.Endpoint.Address}
+          AWS_BUCKET_NAME=${S3BucketName}
+          DB_USERNAME=${DBUserName}
+          DB_PASSWORD=${DBPassword}
+          DB_NAME=${DBName}
+          sudo apt update -y
+          {
+            echo "export AWS_RDS_DB_ENDPOINT=$DB_HOST"
+            echo "export AWS_RDS_DB_PORT=3306"
+            echo "export AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
+            echo "export AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
+            echo "export AWS_RDS_DB_NAME=$DB_NAME"
+            echo "export PORT=3000"
+            echo "export AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
+          } >>/etc/profile
+          {
+            echo "AWS_RDS_DB_ENDPOINT=$DB_HOST"
+            echo "AWS_RDS_DB_PORT=3306"
+            echo "AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
+            echo "AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
+            echo "AWS_RDS_DB_NAME=$DB_NAME"
+            echo "PORT=3000"
+            echo "AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
+          } >>/opt/webapps/custom.properties
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
+  # Create RDS Parameter Group for MySQL
+  RDSDBParameterGroup:
+    Type: 'AWS::RDS::DBParameterGroup'
+    Properties:
+      Description: CloudFormation Sample MySQL Parameter Group
+      Family: mysql8.0
+  #      Parameters:
+  #        sql_mode: IGNORE_SPACE
+  #        max_allowed_packet: 1024
+  #        innodb_buffer_pool_size: '{DBInstanceClassMemory*3/4}'
+
+  # Create RDS Subnet Group in the VPC
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub RDS Subnet Group
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+
+  # Create Security Group for RDS with inbound rules from EC2 Instance Security Group
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: EC2InstanceSecurityGroup
+    Properties:
+      GroupDescription: !Sub RDS Security Group
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2InstanceSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+  # Create RDS Instance with MySQL 8.0 and RDS Subnet Group and Parameter Group
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+      - RDSSecurityGroup
+      - RDSSubnetGroup
+      - RDSDBParameterGroup
+    Properties:
+      DBInstanceClass: db.t3.micro
+      DBName: !Ref DBName
+      Engine: mysql
+      EngineVersion: 8.0.27
+      AllocatedStorage: 20
+      MasterUsername: !Ref DBUserName
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBParameterGroupName: !Ref RDSDBParameterGroup
+      PubliclyAccessible: false
+
+  # S3 bucket with encryption and lifecycle
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: SA to IA
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Ref S3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Create IAM Role for EC2 Instance with S3 Bucket Policy
+  S3BucketIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub S3BucketPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Join [ "", [ "arn:aws:s3:::", !Ref S3BucketName, "/*" ] ]
+
+  # Create Iam Instance Profile
+  S3BucketIAMInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn: S3BucketIAMRole
+    Properties:
+      InstanceProfileName: S3BucketIAMInstanceProfile
+      Path: /
+      Roles:
+        - !Ref S3BucketIAMRole
+
+#
+#  # Get the created RDS Instance Endpoint
+#  RDSInstanceEndpoint:
+#    Type: AWS::SSM::Parameter
+#    Properties:
+#      Name: !Sub RDSInstanceEndpoint
+#      Type: String
+#      Value: !GetAtt RDSInstance.Endpoint.Address
 Outputs:
   VpcId:
     Description: The VPC ID
