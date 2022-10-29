@@ -17,15 +17,21 @@ aws configure --profile demouser
 
 **Creating Stack**
 ```
-aws cloudformation create-stack --stack-name ____ --template-body file://csye6225-infra.yml
+aws cloudformation --profile devuser create-stack --stack-name ____ --template-body file://csye6225-infra.yml
+aws cloudformation --profile devuser create-stack --stack-name ____ --template-body file://csye6225-infra.yml --parameters ParameterKey=AMI,ParameterValue="ami-value" --capabilities CAPABILITY_NAMED_IAM
 ```
 
 **Update Stack**
 ```
-aws cloudformation update-stack --stack-name "  " --template-body file://csye6225-infra.yml
+aws cloudformation --profile devuser update-stack --stack-name "  " --template-body file://csye6225-infra.yml
 ```
 
 **Delete Stack**
 ```
-aws cloudformation delete-stack --stack-name "  "
+aws cloudformation --profile devuser delete-stack --stack-name "  "
+```
+
+**Delete S3 bucket**
+```
+aws --profile devuser s3 rm s3://bucketname --recursive
 ```
