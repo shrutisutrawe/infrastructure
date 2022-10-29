@@ -59,7 +59,7 @@ Parameters:
 
   S3BucketName:
     Type: String
-    Default: "csye6225bucketshrutitobedeleted"
+    Default: "csye6225bucketshrutidemo"
     Description: "S3Bucket Name"
 
   DBName:
@@ -266,11 +266,6 @@ Resources:
           Value: !Ref PrivateRouteTableName
         - Key: VPC Name
           Value: !Ref AWS::StackName
-  #
-  #  PrivateRoute:
-  #    Type: AWS::EC2::Route
-  #    Properties:
-  #      RouteTableId: !Ref PrivateRouteTable
 
   PrivateSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
