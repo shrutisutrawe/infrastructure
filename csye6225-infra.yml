@@ -57,10 +57,10 @@ Parameters:
     Default: "ami-017fecd1353bcc96e"
     Description: "The AMI to use"
 
-  S3BucketName:
-    Type: String
-    Default: "csye6225bucketshrutidemo"
-    Description: "S3Bucket Name"
+#  S3BucketName:
+#    Type: String
+#    Default: "csye6225bucketshruti"
+#    Description: "S3Bucket Name"
 
   DBName:
     Description: "RDS DB Name"
@@ -81,6 +81,19 @@ Parameters:
     Description: "Name Tag for DB Security Group"
     Type: String
     Default: "database"
+
+  HostedZone:
+    Type: String
+    Default: "devshrutisutrawe.me."
+    Description: "The route53 HostedZoneName"
+
+  Subdomain:
+    Description: "Environment Name"
+    Type: String
+    Default: "dev"
+    AllowedValues:
+      - dev
+      - demo
 
 Resources:
   myVPC:
@@ -336,7 +349,7 @@ Resources:
           !Sub |
           #!/bin/bash
           DB_HOST=${RDSInstance.Endpoint.Address}
-          AWS_BUCKET_NAME=${S3BucketName}
+          AWS_BUCKET_NAME=${S3Bucket}
           DB_USERNAME=${DBUserName}
           DB_PASSWORD=${DBPassword}
           DB_NAME=${DBName}
@@ -426,9 +439,23 @@ Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref S3BucketName
+      BucketName:
+        !Join [
+           "",
+         [
+           "csye6225bucket-",
+           !Select [ 0, !Split [ -, !Select [ 2, !Split [ /, !Ref AWS::StackId ] ] ] ],
+           ".",
+           !Ref Subdomain,
+         ],
+        ]
       VersioningConfiguration:
         Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
           - Id: SA to IA
@@ -436,9 +463,6 @@ Resources:
             Transitions:
               - StorageClass: STANDARD_IA
                 TransitionInDays: 30
-      Tags:
-        - Key: Name
-          Value: !Ref S3BucketName
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -459,7 +483,7 @@ Resources:
               - sts:AssumeRole
       Path: /
       Policies:
-        - PolicyName: !Sub S3BucketPolicy
+        - PolicyName: !Sub WebAppS3
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -470,7 +494,8 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Join [ "", [ "arn:aws:s3:::", !Ref S3BucketName, "/*" ] ]
+                  - !Join [ "", [ "arn:aws:s3:::", !Ref S3Bucket ] ]
+                  - !Join [ "", [ "arn:aws:s3:::", !Ref S3Bucket, "/*" ] ]
 
   # Create Iam Instance Profile
   S3BucketIAMInstanceProfile:
@@ -481,6 +506,17 @@ Resources:
       Path: /
       Roles:
         - !Ref S3BucketIAMRole
+
+  myDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: !Join ["", [!Ref Subdomain, ".devshrutisutrawe.me."]]
+      Comment: DNS name for my instance.
+      Name: !Join ['', [!Ref Subdomain, ".devshrutisutrawe.me."]]
+      Type: A
+      TTL: 900
+      ResourceRecords:
+        - !GetAtt Instance.PublicIp
 
 #
 #  # Get the created RDS Instance Endpoint

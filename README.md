@@ -19,6 +19,7 @@ aws configure --profile demouser
 ```
 aws cloudformation --profile devuser create-stack --stack-name ____ --template-body file://csye6225-infra.yml
 aws cloudformation --profile devuser create-stack --stack-name ____ --template-body file://csye6225-infra.yml --parameters ParameterKey=AMI,ParameterValue="ami-value" --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation create-stack --stack-name ____ --template-body file://csye6225-infra.yml --profile demouser --parameters ParameterKey=AMI,ParameterValue="ami-value" ParameterKey=Subdomain,ParameterValue="demo" --capabilities CAPABILITY_NAMED_IAM
 ```
 
 **Update Stack**
