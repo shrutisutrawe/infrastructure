@@ -52,6 +52,12 @@ Parameters:
     AllowedValues: [ t2.micro ]
     Description: "EC2Instance AMI"
 
+
+  CodeDeployS3Bucket:
+    Description: "CodeDeploy S3 Bucket"
+    Type: String
+    Default: code-deploy-s3-bucket-csye-6225
+
   AMI:
     Type: String
     Default: "ami-017fecd1353bcc96e"
@@ -496,6 +502,8 @@ Resources:
                 Resource:
                   - !Join [ "", [ "arn:aws:s3:::", !Ref S3Bucket ] ]
                   - !Join [ "", [ "arn:aws:s3:::", !Ref S3Bucket, "/*" ] ]
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 
   # Create Iam Instance Profile
   S3BucketIAMInstanceProfile:
