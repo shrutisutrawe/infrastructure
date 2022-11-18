@@ -5,6 +5,7 @@
 - Create a public route table Attach all subnets created to the route table.
 - Create a public route in the public route table created above with destination CIDR block 0.0.0.0/0 and internet gateway created above as the target.
 - Assignment 7 changes to add cloud watch agent policy to the IAM Role
+- Assignment 8 changes to implement AWS SNS, Lambda function and DynamoDB resources.
 
 # AWS CLI
 
