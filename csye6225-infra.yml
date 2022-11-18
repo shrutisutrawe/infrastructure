@@ -101,6 +101,34 @@ Parameters:
       - dev
       - demo
 
+  UserAccountVerificationSNSTopicName:
+    Description: "SNS topic name for new account email verification"
+    Type: "String"
+    Default: "UserAccountVerificationSNSTopic"
+
+  SNSTopicName:
+    Type: String
+    Description: Topic Name
+    Default: my-topic
+
+  LambdaName:
+    Type: String
+    Default: "LambdaName"
+
+  ModuleName:
+      Type: String
+      Default: "python"
+
+  LambdaFunctionName:
+    Description: "Email sending lambda function"
+    Type: "String"
+    Default: "LambdaFunction"
+
+  LambdaFunctionS3BucketName:
+    Description: "bucket Name"
+    Type: String
+    Default: "csye6225-shruti"
+
 Resources:
   myVPC:
     Type: AWS::EC2::VPC
@@ -359,6 +387,9 @@ Resources:
           DB_USERNAME=${DBUserName}
           DB_PASSWORD=${DBPassword}
           DB_NAME=${DBName}
+          ACCOUNT_ID=${AWS::AccountId}
+          HOSTED_ZONE=${Subdomain}.${HostedZone}
+
           sudo apt update -y
           {
             echo "export AWS_RDS_DB_ENDPOINT=$DB_HOST"
@@ -369,6 +400,7 @@ Resources:
             echo "export PORT=3000"
             echo "export AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
           } >>/etc/profile
+
           {
             echo "AWS_RDS_DB_ENDPOINT=$DB_HOST"
             echo "AWS_RDS_DB_PORT=3306"
@@ -377,6 +409,9 @@ Resources:
             echo "AWS_RDS_DB_NAME=$DB_NAME"
             echo "PORT=3000"
             echo "AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
+            echo "AWS_USER_EMAIL_VERIFICATION_SNS_TOPIC_NAME=${UserAccountVerificationSNSTopicName}"
+            echo "AWS_ACCOUNT_ID=$ACCOUNT_ID"
+            echo "AWS_HOSTED_ZONE_DNS=$HOSTED_ZONE"
           } >>/opt/webapps/custom.properties
       Tags:
         - Key: Name
@@ -504,6 +539,7 @@ Resources:
                   - !Join [ "", [ "arn:aws:s3:::", !Ref S3Bucket, "/*" ] ]
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 
   # Create Iam Instance Profile
   S3BucketIAMInstanceProfile:
@@ -526,14 +562,152 @@ Resources:
       ResourceRecords:
         - !GetAtt Instance.PublicIp
 
-#
-#  # Get the created RDS Instance Endpoint
-#  RDSInstanceEndpoint:
-#    Type: AWS::SSM::Parameter
-#    Properties:
-#      Name: !Sub RDSInstanceEndpoint
-#      Type: String
-#      Value: !GetAtt RDSInstance.Endpoint.Address
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Description: Send email to SNS
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Role:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:iam::'
+            - !Ref AWS::AccountId
+            - ":role/"
+            - !Ref LambdaFunctionRole
+      Runtime: python3.9
+      Handler: lambda_function.lambda_handler
+      Environment:
+        Variables:
+          SENDGRID_API_KEY: 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
+      Code:
+        S3Bucket: !Ref LambdaFunctionS3BucketName
+        S3Key: serverless.zip
+
+
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "LambdaFunctionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  DynamodbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "email"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TableName: UserAccountVerificationTokenTable
+      TimeToLiveSpecification:
+        AttributeName: token_expiry_time_epoch
+        Enabled: true
+      Tags:
+        - Key: key
+          Value: value
+
+  DynamoDBSericeAccessPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: DynamoDBSericeAccessPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - 'dynamodb:Get*'
+              - 'dynamodb:PutItem'
+              - 'dynamodb:DescribeTable'
+              - 'dynamodb:Query'
+              - 'dynamodb:Scan'
+              - 'dynamodb:Delete*'
+              - 'dynamodb:CreateTable'
+              - 'dynamodb:Update*'
+              - 'dynamodb:BatchWrite*'
+              - 'dynamodb:DescribeStream'
+            Resource:
+              - !Join [ "",[ "arn:aws:dynamodb:us-west-2:",!Ref "AWS::AccountId", ":table/UserAccountVerificationTokenTable", ], ]
+      Roles:
+        - !Ref S3BucketIAMRole
+
+  # Create SNS Topic
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref UserAccountVerificationSNSTopicName
+      DisplayName: !Ref UserAccountVerificationSNSTopicName
+      Subscription:
+        - Endpoint: !GetAtt LambdaFunction.Arn
+          Protocol: "lambda"
+
+
+  # Create SNS Topic Policy
+  SNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+              - SNS:Publish
+              - SNS:Subscribe
+              - SNS:ListSubscriptionsByTopic
+              - SNS:GetTopicAttributes
+              - SNS:SetTopicAttributes
+              - SNS:AddPermission
+              - SNS:RemovePermission
+              - SNS:DeleteTopic
+            Resource: !Ref SNSTopic
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref AWS::AccountId
+      Topics:
+        - !Ref SNSTopic
+
+  SNSServiceAccessPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: SNSSericeAccessPolicy
+      PolicyDocument:
+        Version: '2008-10-17'
+        Id: __default_policy_ID
+        Statement:
+          - Effect: Allow
+            Action: 'sns:Publish'
+            Resource:
+              - !Ref SNSTopic
+      Roles:
+        - !Ref S3BucketIAMRole
+
+  # Create Lambda Function Permission for SNS Topic
+  SNSTopicLambdaPermission:
+    DependsOn: LambdaFunction
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "sns.amazonaws.com"
+      SourceArn: !Ref SNSTopic
+
 Outputs:
   VpcId:
     Description: The VPC ID
