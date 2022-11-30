@@ -129,6 +129,11 @@ Parameters:
     Type: String
     Default: "csye6225-shruti"
 
+  SSLCertificateId:
+    Type: String
+    Default: "13579a6c-27c8-4f60-8dc9-f21e1e483224"
+    Description: "SSL Certificate Id"
+
 Resources:
   myVPC:
     Type: AWS::EC2::VPC
@@ -350,81 +355,20 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
           FromPort: 3000
           ToPort: 3000
-          CidrIp: 0.0.0.0/0
+#          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
 
-  Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: !Ref AMI
-      InstanceType: !Ref EC2Instance
-      SecurityGroupIds:
-        - !Ref EC2InstanceSecurityGroup
-      SubnetId: !Ref PublicSubnetA
-      KeyName: "aws-us-west-2-key"
-      BlockDeviceMappings:
-        - DeviceName: /dev/xvda
-          Ebs:
-            VolumeType: gp2
-            DeleteOnTermination: true
-            VolumeSize: 50
-      IamInstanceProfile: !Ref S3BucketIAMInstanceProfile
-      UserData:
-        Fn::Base64:
-          !Sub |
-          #!/bin/bash
-          DB_HOST=${RDSInstance.Endpoint.Address}
-          AWS_BUCKET_NAME=${S3Bucket}
-          DB_USERNAME=${DBUserName}
-          DB_PASSWORD=${DBPassword}
-          DB_NAME=${DBName}
-          ACCOUNT_ID=${AWS::AccountId}
-          HOSTED_ZONE=${Subdomain}.${HostedZone}
-
-          sudo apt update -y
-          {
-            echo "export AWS_RDS_DB_ENDPOINT=$DB_HOST"
-            echo "export AWS_RDS_DB_PORT=3306"
-            echo "export AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
-            echo "export AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
-            echo "export AWS_RDS_DB_NAME=$DB_NAME"
-            echo "export PORT=3000"
-            echo "export AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
-          } >>/etc/profile
-
-          {
-            echo "AWS_RDS_DB_ENDPOINT=$DB_HOST"
-            echo "AWS_RDS_DB_PORT=3306"
-            echo "AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
-            echo "AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
-            echo "AWS_RDS_DB_NAME=$DB_NAME"
-            echo "PORT=3000"
-            echo "AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
-            echo "AWS_USER_EMAIL_VERIFICATION_SNS_TOPIC_NAME=${UserAccountVerificationSNSTopicName}"
-            echo "AWS_ACCOUNT_ID=$ACCOUNT_ID"
-            echo "AWS_HOSTED_ZONE_DNS=$HOSTED_ZONE"
-          } >>/opt/webapps/custom.properties
-      Tags:
-        - Key: Name
-          Value: !Ref AWS::StackName
   # Create RDS Parameter Group for MySQL
   RDSDBParameterGroup:
     Type: 'AWS::RDS::DBParameterGroup'
     Properties:
       Description: CloudFormation Sample MySQL Parameter Group
       Family: mysql8.0
-  #      Parameters:
-  #        sql_mode: IGNORE_SPACE
-  #        max_allowed_packet: 1024
+#      Parameters:
+#        sql_mode: IGNORE_SPACE
+#        max_allowed_packet: 1024
   #        innodb_buffer_pool_size: '{DBInstanceClassMemory*3/4}'
 
   # Create RDS Subnet Group in the VPC
@@ -449,11 +393,6 @@ Resources:
           FromPort: 3306
           ToPort: 3306
           SourceSecurityGroupId: !Ref EC2InstanceSecurityGroup
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: 0
-          ToPort: 0
-          CidrIp: 0.0.0.0/0
 
   # Create RDS Instance with MySQL 8.0 and RDS Subnet Group and Parameter Group
   RDSInstance:
@@ -462,6 +401,7 @@ Resources:
       - RDSSecurityGroup
       - RDSSubnetGroup
       - RDSDBParameterGroup
+      - RdsKmsKey
     Properties:
       DBInstanceClass: db.t3.micro
       DBName: !Ref DBName
@@ -475,6 +415,39 @@ Resources:
         - !Ref RDSSecurityGroup
       DBParameterGroupName: !Ref RDSDBParameterGroup
       PubliclyAccessible: false
+      StorageEncrypted: true
+      KmsKeyId:
+        Fn::GetAtt: [RdsKmsKey , Arn]
+
+  # Create a KMS Key
+  RdsKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS Key for RDS
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: "kms-key-for-rds"
+        Statement:
+          - Sid: "Allow IAM User permission for RDS Instance"
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Add service role"
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS'
+            Action: "kms:*"
+            Resource: "*"
 
   # S3 bucket with encryption and lifecycle
   S3Bucket:
@@ -510,7 +483,7 @@ Resources:
               SSEAlgorithm: AES256
 
   # Create IAM Role for EC2 Instance with S3 Bucket Policy
-  S3BucketIAMRole:
+  Ec2InstanceIamRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -524,7 +497,7 @@ Resources:
               - sts:AssumeRole
       Path: /
       Policies:
-        - PolicyName: !Sub WebAppS3
+        - PolicyName: WebAppS3
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -540,27 +513,98 @@ Resources:
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
         - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonSNSFullAccess"
 
   # Create Iam Instance Profile
-  S3BucketIAMInstanceProfile:
+  Ec2InstanceIamProfile:
     Type: AWS::IAM::InstanceProfile
-    DependsOn: S3BucketIAMRole
+    DependsOn: Ec2InstanceIamRole
     Properties:
-      InstanceProfileName: S3BucketIAMInstanceProfile
+      InstanceProfileName: !Sub '${AWS::StackName}-LaunchTemplateIAMInstanceProfile'
       Path: /
       Roles:
-        - !Ref S3BucketIAMRole
+        - !Ref Ec2InstanceIamRole
 
-  myDNSRecord:
-    Type: AWS::Route53::RecordSet
+  # Create Target Group for Load Balancer
+  LoadBalancerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      HostedZoneName: !Join ["", [!Ref Subdomain, ".devshrutisutrawe.me."]]
-      Comment: DNS name for my instance.
-      Name: !Join ['', [!Ref Subdomain, ".devshrutisutrawe.me."]]
-      Type: A
-      TTL: 900
-      ResourceRecords:
-        - !GetAtt Instance.PublicIp
+      Name: !Sub '${AWS::StackName}-TargetGroup'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref myVPC
+      HealthCheckIntervalSeconds: 90
+      HealthCheckPath: '/healthz'
+      HealthCheckPort: '3000'
+      HealthCheckProtocol: 'HTTP'
+      HealthCheckTimeoutSeconds: 60
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: instance
+      IpAddressType: ipv4
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '20'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-TargetGroup'
+
+  # Create Load Balancer Security Group
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load Balancer Security Group
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # Create Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn:
+      - EC2AutoScalingGroup
+      - LoadBalancerSecurityGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-LoadBalancer'
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+        - !Ref PublicSubnetC
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      IpAddressType: ipv4
+      Type: application
+      Tags:
+        - Key: Application
+          Value: WebApp
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-LoadBalancer'
+
+  # Create Listener for Load Balancer
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Join [ "", [ "arn:aws:acm:", !Ref AWS::Region, ":", !Ref AWS::AccountId, ":certificate/", !Ref SSLCertificateId ] ]
+#        - CertificateArn: 'arn:aws:acm:us-west-2:097171053993:certificate/13579a6c-27c8-4f60-8dc9-f21e1e483224'
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LoadBalancerTargetGroup
+
 
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -583,6 +627,208 @@ Resources:
         S3Bucket: !Ref LambdaFunctionS3BucketName
         S3Key: serverless.zip
 
+  # Create EC2 Launch Template
+  EC2LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    DependsOn:
+      - RDSInstance
+      - S3Bucket
+      - Ec2InstanceIamProfile
+    Properties:
+      LaunchTemplateName: !Sub 'asg_launch_config'
+      LaunchTemplateData:
+        ImageId: !Ref AMI
+        InstanceType: t2.micro
+        KeyName: "aws-us-west-2-key"
+        IamInstanceProfile:
+          Arn: !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${AWS::StackName}-LaunchTemplateIAMInstanceProfile'
+        BlockDeviceMappings:
+          - DeviceName: "/dev/xvda"
+            Ebs:
+              VolumeType: "gp2"
+              DeleteOnTermination: true
+              VolumeSize: 20
+              Encrypted: true
+#              KmsKeyId: !Ref EBSKmsKey
+        SecurityGroupIds:
+          - !Ref EC2InstanceSecurityGroup
+        UserData:
+          Fn::Base64:
+            !Sub |
+            #!/bin/bash
+            DB_HOST=${RDSInstance.Endpoint.Address}
+            AWS_BUCKET_NAME=${S3Bucket}
+            DB_USERNAME=${DBUserName}
+            DB_PASSWORD=${DBPassword}
+            DB_NAME=${DBName}
+            ACCOUNT_ID=${AWS::AccountId}
+            AWSREGION=${AWS::Region}
+            HOSTED_ZONE=${Subdomain}.${HostedZone}
+
+            sudo apt update -y
+            {
+              echo "export AWS_RDS_DB_ENDPOINT=$DB_HOST"
+              echo "export AWS_RDS_DB_PORT=3306"
+              echo "export AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
+              echo "export AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
+              echo "export AWS_RDS_DB_NAME=$DB_NAME"
+              echo "export PORT=3000"
+              echo "export AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
+            } >>/etc/profile
+
+            {
+              echo "AWS_RDS_DB_ENDPOINT=$DB_HOST"
+              echo "AWS_RDS_DB_PORT=3306"
+              echo "AWS_RDS_DB_MASTER_USERNAME=$DB_USERNAME"
+              echo "AWS_RDS_DB_MASTER_PASSWORD=$DB_PASSWORD"
+              echo "AWS_RDS_DB_NAME=$DB_NAME"
+              echo "PORT=3000"
+              echo "AWS_S3_BUCKET_NAME=$AWS_BUCKET_NAME"
+              echo "AWS_USER_EMAIL_VERIFICATION_SNS_TOPIC_NAME=${UserAccountVerificationSNSTopicName}"
+              echo "AWS_ACCOUNT_ID=$ACCOUNT_ID"
+              echo "AWS_HOSTED_ZONE_DNS=$HOSTED_ZONE"
+              echo "AWS_REGION=$AWSREGION"
+            } >>/opt/webapps/custom.properties
+            sudo systemctl stop myapp.service
+            sudo systemctl start myapp.service
+            sudo systemctl enable myapp.service
+
+  EBSKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub KMS Key for EBS
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: "kms-key-for-ebs"
+        Statement:
+          - Sid: "Allow IAM User permission for EBS"
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':root'
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Add service role"
+            Effect: Allow
+            Principal:
+              AWS: !Join
+                - ''
+                - - 'arn:aws:iam::'
+                  - !Ref 'AWS::AccountId'
+                  - ':role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling'
+            Action: "kms:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                kms:GrantIsForAWSResource: true
+
+  # Create Auto Scaling Group with Launch Template
+  EC2AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - EC2LaunchTemplate
+      - LoadBalancerTargetGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${AWS::StackName}-auto-scaling-group'
+      AvailabilityZones:
+        - us-west-2a
+        - us-west-2b
+        - us-west-2c
+      HealthCheckGracePeriod: 90
+      HealthCheckType: EC2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref EC2LaunchTemplate
+        Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+        - !Ref PublicSubnetC
+      Cooldown: '60'
+
+      Tags:
+        - Key: Application
+          Value: WebApp
+          PropagateAtLaunch: "true"
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-auto-scaling-group'
+          PropagateAtLaunch: "true"
+      TargetGroupARNs:
+        - !Ref LoadBalancerTargetGroup
+
+  asgCPUPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    DependsOn:
+      - EC2AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Ref EC2AutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 90.0
+
+  # Create Auto Scaling Policy for Scaling Out
+  EC2AutoScalingPolicyForScalingOut:
+    Type: AWS::AutoScaling::ScalingPolicy
+    DependsOn:
+      - EC2AutoScalingGroup
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '1'
+      AutoScalingGroupName: !Ref EC2AutoScalingGroup
+
+  AvgCPUUp:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - EC2AutoScalingGroup
+    Properties:
+      AlarmDescription: !Sub '${AWS::StackName}-AVGCPUUP'
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Period: 60
+      Statistic: Average
+      Threshold: 5.0
+      AlarmActions:
+        - !Ref EC2AutoScalingPolicyForScalingOut
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref EC2AutoScalingGroup
+
+  EC2AutoScalingPolicyForScalingIn:
+    Type: AWS::AutoScaling::ScalingPolicy
+    DependsOn:
+      - EC2AutoScalingGroup
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '-1'
+      AutoScalingGroupName: !Ref EC2AutoScalingGroup
+
+  AvgCPUDown:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn:
+      - EC2AutoScalingGroup
+    Properties:
+      AlarmDescription: !Sub '${AWS::StackName}-AVGCPUDOWN'
+      ComparisonOperator: LessThanThreshold
+      EvaluationPeriods: 2
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Period: 60
+      Statistic: Average
+      Threshold: 3.0
+      AlarmActions:
+        - !Ref EC2AutoScalingPolicyForScalingIn
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref EC2AutoScalingGroup
 
   LambdaFunctionRole:
     Type: AWS::IAM::Role
@@ -644,7 +890,7 @@ Resources:
             Resource:
               - !Join [ "",[ "arn:aws:dynamodb:us-west-2:",!Ref "AWS::AccountId", ":table/UserAccountVerificationTokenTable", ], ]
       Roles:
-        - !Ref S3BucketIAMRole
+        - !Ref Ec2InstanceIamRole
 
   # Create SNS Topic
   SNSTopic:
@@ -696,7 +942,7 @@ Resources:
             Resource:
               - !Ref SNSTopic
       Roles:
-        - !Ref S3BucketIAMRole
+        - !Ref Ec2InstanceIamRole
 
   # Create Lambda Function Permission for SNS Topic
   SNSTopicLambdaPermission:
@@ -708,6 +954,19 @@ Resources:
       Principal: "sns.amazonaws.com"
       SourceArn: !Ref SNSTopic
 
+  myDNSRecord:
+    Type: AWS::Route53::RecordSetGroup
+    DependsOn:
+      - LoadBalancer
+    Properties:
+      HostedZoneName: !Join [ "", [ !Ref Subdomain, ".devshrutisutrawe.me." ] ]
+      Comment: DNS name for my instance.
+      RecordSets:
+        - Name: !Join [ '', [ !Ref Subdomain, ".devshrutisutrawe.me." ] ]
+          Type: A
+          AliasTarget:
+             DNSName: !GetAtt LoadBalancer.DNSName
+             HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
 Outputs:
   VpcId:
     Description: The VPC ID
