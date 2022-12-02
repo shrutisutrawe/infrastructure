@@ -649,7 +649,7 @@ Resources:
               DeleteOnTermination: true
               VolumeSize: 20
               Encrypted: true
-#              KmsKeyId: !Ref EBSKmsKey
+              KmsKeyId: !Ref EBSKmsKey
         SecurityGroupIds:
           - !Ref EC2InstanceSecurityGroup
         UserData:
@@ -721,9 +721,6 @@ Resources:
                   - ':role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling'
             Action: "kms:*"
             Resource: "*"
-            Condition:
-              Bool:
-                kms:GrantIsForAWSResource: true
 
   # Create Auto Scaling Group with Launch Template
   EC2AutoScalingGroup:
