@@ -38,3 +38,12 @@ aws cloudformation --profile devuser delete-stack --stack-name "  "
 ```
 aws --profile devuser s3 rm s3://bucketname --recursive
 ```
+
+**Import Certificate**
+```
+aws acm import-certificate --certificate fileb://Certificate.pem \
+
+      --certificate-chain fileb://CertificateChain.pem \
+
+      --private-key fileb://PrivateKey.pem
+```
